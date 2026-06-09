@@ -1,0 +1,9 @@
+{
+  "artifacts": [
+    {
+      "name": "docs",
+      "path": "./docs",
+      "description": "Documentação do projeto"
+    }
+  ]
+}
