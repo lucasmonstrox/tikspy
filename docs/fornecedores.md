@@ -81,6 +81,7 @@ Levantamento de 2026-06-10. Nenhuma API oficial entrega dados de mercado de terc
 - **Docs:** https://partner.tiktokshop.com/docv2/page/rate-limits
 - **Cobre:** produtos, pedidos, fulfillment, finanças, devoluções, promoções, afiliados, atendimento e webhooks — **somente de lojas que autorizaram o app via OAuth**.
 - **Uso no TIKSPY:** alimenta o `/desempenho` (operação própria do cliente), nunca o Radar.
+- **Opcional:** conectar/configurar a loja do TikTok Shop **não é obrigatório**. Toda a inteligência de mercado (Radar, Dashboard) funciona sem nenhuma loja conectada — a conexão via OAuth só desbloqueia o `/desempenho` (operação própria). Sem ela, o cliente usa o produto normalmente, apenas sem a camada de dados da própria operação.
 - **Rate limit:** QPS **dinâmico** por `App ID × loja autorizada` — cresce com o número de lojas autorizadas; leituras ganham quota maior que escritas. Não há API para consultar a quota. Estouro → HTTP 429; retry com exponential backoff + jitter (1s dobrando até 60s). 503 = sobrecarga do backend, não rate limit. Para picos (datas de promoção), acionar o Account Manager antes.
 
 ### 2.2 Display API (developers.tiktok.com)
