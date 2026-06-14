@@ -37,6 +37,14 @@ export const getTrendingCreatives = cache(async (limit: number) => {
   return data
 })
 
+export const getTopSellingCreatives = cache(async (limit: number) => {
+  const { data, error } = await api.v1.market.creatives["top-selling"].get({
+    query: { limit },
+  })
+  if (error) apiUnavailable(error.status)
+  return data
+})
+
 export const getMarketTrend = cache(async (days: number) => {
   const { data, error } = await api.v1.market.trend.get({
     query: { days },

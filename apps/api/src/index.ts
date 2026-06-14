@@ -1,7 +1,8 @@
 import { cors } from "@elysiajs/cors"
 import { Elysia, t } from "elysia"
+import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker"
 
-import { fromMarketSource } from "./data-source"
+import { EchotikApiError, fromMarketSource } from "./data-source"
 import type { MarketDataSource } from "./data-source"
 import { notifications } from "./notifications"
 import { webhooks } from "./webhooks"
@@ -13,6 +14,34 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000"
 export const DATA_SOURCE_HEADER = "x-data-source"
 
 const listQuery = t.Object({
+  limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100 })),
+})
+
+const videosQuery = t.Object({
+  sort: t.Optional(
+    t.Union([t.Literal("trending"), t.Literal("top-selling")]),
+  ),
+  period: t.Optional(
+    t.Union([t.Literal("day"), t.Literal("week"), t.Literal("month")]),
+  ),
+  category: t.Optional(t.String()),
+  ai: t.Optional(t.Boolean()),
+  limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100 })),
+})
+
+const creatorsQuery = t.Object({
+  niche: t.Optional(t.String()),
+  minFollowers: t.Optional(t.Numeric({ minimum: 0 })),
+  maxFollowers: t.Optional(t.Numeric({ minimum: 0 })),
+  sort: t.Optional(
+    t.Union([
+      t.Literal("followers"),
+      t.Literal("videos"),
+      t.Literal("efficiency"),
+      t.Literal("gmv"),
+    ]),
+  ),
+  sortDir: t.Optional(t.Union([t.Literal("asc"), t.Literal("desc")])),
   limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100 })),
 })
 
@@ -52,6 +81,79 @@ const market = new Elysia({ prefix: "/v1/market" })
     { query: listQuery },
   )
   .get(
+    "/creatives/top-selling",
+    ({ query, set }) =>
+      respond(set.headers, (source) =>
+        source.getTopSellingCreatives({ limit: query.limit }),
+      ),
+    { query: listQuery },
+  )
+  .get(
+    "/creators",
+    ({ query, set }) =>
+      respond(set.headers, (source) =>
+        source.getCreators({
+          niche: query.niche,
+          minFollowers: query.minFollowers,
+          maxFollowers: query.maxFollowers,
+          sort: query.sort,
+          sortDir: query.sortDir,
+          limit: query.limit,
+        }),
+      ),
+    { query: creatorsQuery },
+  )
+  .get(
+    "/videos",
+    ({ query, set }) =>
+      respond(set.headers, (source) =>
+        source.getVideos({
+          sort: query.sort,
+          period: query.period,
+          category: query.category,
+          ai: query.ai,
+          limit: query.limit,
+        }),
+      ),
+    { query: videosQuery },
+  )
+  .get("/categories", ({ set }) =>
+    respond(set.headers, (source) => source.getVideoCategories()),
+  )
+  // Estático antes do dinâmico (:id) — "/categories/overview" não pode cair no :id.
+  .get(
+    "/categories/overview",
+    ({ query, set }) =>
+      respond(set.headers, (source) =>
+        source.getMarketCategories({ limit: query.limit }),
+      ),
+    { query: listQuery },
+  )
+  .get(
+    "/categories/:id",
+    async ({ params, set, status }) => {
+      try {
+        return await respond(set.headers, (source) =>
+          source.getMarketCategory(params.id),
+        )
+      } catch (error) {
+        // category_id fora do catálogo L1 → 404 tipado (não polui o tipo do 200);
+        // o resto propaga normal.
+        if (error instanceof EchotikApiError && error.status === 404) {
+          return status(404, { error: "category_not_found" })
+        }
+        throw error
+      }
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+  .get(
+    "/lives",
+    ({ query, set }) =>
+      respond(set.headers, (source) => source.getLives({ limit: query.limit })),
+    { query: listQuery },
+  )
+  .get(
     "/trend",
     ({ query, set }) =>
       respond(set.headers, (source) =>
@@ -60,27 +162,43 @@ const market = new Elysia({ prefix: "/v1/market" })
     { query: trendQuery },
   )
 
-const app = new Elysia()
+// No workerd usa o adapter oficial (Elysia ≥1.4.7) com aot:false: o compile()
+// (new Function) é proibido em request no workerd, e rodá-lo no startup estoura
+// o limite de CPU do deploy (10021). Modo dinâmico resolve. No Bun, adapter padrão.
+const isWorkerd =
+  typeof navigator !== "undefined" &&
+  navigator.userAgent === "Cloudflare-Workers"
+
+export const app = new Elysia(
+  isWorkerd ? { adapter: CloudflareAdapter, aot: false } : {},
+)
   .use(cors({ origin: CORS_ORIGIN }))
   .get("/health", () => ({ status: "ok" }))
   .use(market)
   .use(webhooks)
   .use(notifications)
 
-// Na Vercel a function recebe o fetch handler via export default — não há porta.
-if (!process.env.VERCEL) {
+// Só sobe o servidor Bun quando executado direto (`bun run src/index.ts`); ao ser
+// importado pelo worker.ts (workerd) ou pelo Eden (tipos), não escuta porta.
+if (import.meta.main) {
   app.listen(PORT)
   console.log(`[api] TIKSPY API rodando em http://localhost:${PORT}`)
 }
 
-export default app
-
 export type App = typeof app
 
 export type {
+  CreatorSort,
+  MarketCategory,
+  MarketCategoryDetail,
+  MarketCategoryStats,
   MarketCreative,
+  MarketCreator,
+  MarketLive,
   MarketProduct,
   MarketSummary,
   MarketTrendPoint,
   SourceName,
+  VideoPeriod,
+  VideoSort,
 } from "./data-source"

@@ -12,7 +12,7 @@ import { SkeletonVideoGrid, VideoGrid } from "@/shared"
 
 import { TRENDING_CREATIVES_LIMIT } from "../../consts"
 import { getTrendingCreatives } from "../../services/dashboard"
-import { formatBrlCompact, formatCompact } from "../../utils/format"
+import { formatCompact } from "../../utils/format"
 
 export function TrendingCreativesCard() {
   return (
@@ -42,8 +42,16 @@ async function TrendingCreativesGrid() {
       items={creatives.map((creative) => ({
         title: creative.title,
         creator: creative.creatorHandle,
+        creatorUrl: `https://www.tiktok.com/${creative.creatorHandle}`,
+        cover: creative.cover,
+        videoId: creative.id,
+        href: creative.tiktokUrl,
         views: formatCompact(creative.views),
-        gmv: formatBrlCompact(creative.estimatedGmv),
+        likes: creative.likes != null ? formatCompact(creative.likes) : undefined,
+        comments:
+          creative.comments != null ? formatCompact(creative.comments) : undefined,
+        shares:
+          creative.shares != null ? formatCompact(creative.shares) : undefined,
       }))}
     />
   )

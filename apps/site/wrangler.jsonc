@@ -1,0 +1,9 @@
+// apps/site (landing) — export estático do Next servido como assets.
+// Sem `main`: é um Worker assets-only (HTML/CSS/JS puro, zero compute).
+{
+  "name": "tikspy-site",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./out"
+  }
+}

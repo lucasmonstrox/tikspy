@@ -4,23 +4,21 @@
       "command": "cmd",
       "args": ["/c", "npx", "-y", "chrome-devtools-mcp@latest"]
     },
+    "echotik": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://mcp.rapidapi.com",
+        "--header",
+        "x-api-host: tiktok-ultra-api1.p.rapidapi.com",
+        "--header",
+        "x-api-key: 1a0216e7dfmsh05c872b57e20803p17ab89jsn2ed1174ee5bf"
+      ]
+    },
     "supabase": {
       "command": "cmd",
       "args": [
         "/c", "npx", "-y", "mcp-remote", "https://mcp.supabase.com/mcp?project_ref=leydusfhqhuharfecofu"
-      ]
-    },
-    "trigger": {
-      "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "trigger.dev@4.4.6",
-        "mcp",
-        "--project-ref",
-        "proj_grlsnmejoweszxtgclvr",
-        "--profile",
-        "default"
       ]
     }
   }

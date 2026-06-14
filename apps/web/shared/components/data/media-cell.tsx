@@ -14,6 +14,8 @@ const TONES = [
 type MediaCellProps = {
   title: string
   subtitle?: string
+  /** URL da imagem; quando ausente cai no gradiente com iniciais. */
+  image?: string | null
   seed?: number
   shape?: "square" | "circle"
   className?: string
@@ -22,21 +24,33 @@ type MediaCellProps = {
 export function MediaCell({
   title,
   subtitle,
+  image,
   seed = 0,
   shape = "square",
   className,
 }: MediaCellProps) {
+  const shapeClass = shape === "circle" ? "size-8 rounded-full" : "size-9 rounded-md"
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-center bg-gradient-to-br text-xs font-semibold",
-          shape === "circle" ? "size-8 rounded-full" : "size-9 rounded-md",
-          TONES[seed % TONES.length],
-        )}
-      >
-        {getInitials(title)}
-      </div>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element -- CDN externo (echosell), sem next/image config
+        <img
+          src={image}
+          alt={title}
+          loading="lazy"
+          className={cn("shrink-0 bg-muted object-cover", shapeClass)}
+        />
+      ) : (
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center bg-gradient-to-br text-xs font-semibold",
+            shapeClass,
+            TONES[seed % TONES.length],
+          )}
+        >
+          {getInitials(title)}
+        </div>
+      )}
       <div className="flex min-w-0 flex-col">
         <span className="max-w-44 truncate text-sm font-medium">{title}</span>
         {subtitle ? (

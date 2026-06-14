@@ -4,6 +4,7 @@ import { DashboardKpis } from "./dashboard-kpis"
 import { LiveBadge } from "./live-badge"
 import { MarketTrendCard } from "./market-trend-card"
 import { TopProductsCard } from "./top-products-card"
+import { TopSellingCreativesCard } from "./top-selling-creatives-card"
 import { TrendingCreativesCard } from "./trending-creatives-card"
 
 export function DashboardPage() {
@@ -18,6 +19,7 @@ export function DashboardPage() {
       <DashboardKpis />
       <TopProductsCard />
       <TrendingCreativesCard />
+      <TopSellingCreativesCard />
       <MarketTrendCard />
     </PageShell>
   )

@@ -24,8 +24,11 @@ dist
 # turbo
 .turbo
 
-# trigger.dev
-.trigger
+# cloudflare / opennext
+.open-next/
+.wrangler/
+cloudflare-env.d.ts
+.dev.vars
 
 # misc
 .DS_Store

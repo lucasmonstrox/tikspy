@@ -4,6 +4,10 @@ import { CriadoresPage } from "@/features/concorrencia"
 
 export const metadata: Metadata = { title: "Criadores" }
 
-export default function Page() {
-  return <CriadoresPage />
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  return <CriadoresPage searchParams={await searchParams} />
 }

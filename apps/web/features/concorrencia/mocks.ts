@@ -1,5 +1,3 @@
-import type { Kpi } from "@/shared"
-
 export type Criador = {
   nome: string
   nicho: string
@@ -43,30 +41,4 @@ export const LOJAS: Loja[] = [
   { nome: "Duda Cosméticos", categoria: "Beleza", produtos: "89", criadores: "634", gmv30d: "R$ 580 mil", crescimento: "+7%", up: true, spark: [40, 41, 43, 42, 45, 47, 49] },
   { nome: "Fit Store BR", categoria: "Fitness", produtos: "76", criadores: "298", gmv30d: "R$ 340 mil", crescimento: "-4%", up: false, spark: [48, 47, 45, 44, 42, 41, 40] },
   { nome: "Mega Imports", categoria: "Acessórios", produtos: "203", criadores: "187", gmv30d: "R$ 210 mil", crescimento: "-16%", up: false, spark: [55, 51, 48, 44, 40, 37, 34] },
-]
-
-export const LIVES_KPIS: Kpi[] = [
-  { label: "Lives ao vivo agora", value: "38", delta: "+12", deltaUp: true, hint: "vs. mesma hora ontem" },
-  { label: "GMV de lives (24h)", value: "R$ 1,1M", delta: "+26%", deltaUp: true, hint: "estimado" },
-  { label: "Espectadores de pico", value: "48,2 mil", hint: "Beleza Glow, 20h14" },
-  { label: "Produtos em destaque", value: "412", hint: "em lives ativas" },
-]
-
-export type Live = {
-  titulo: string
-  canal: string
-  status: "Ao vivo" | "Encerrada"
-  espectadores: string
-  produtos: string
-  gmv: string
-  duracao: string
-}
-
-export const LIVES: Live[] = [
-  { titulo: "MEGA liquidação de beleza 🔥", canal: "Beleza Glow Store", status: "Ao vivo", espectadores: "12,4 mil", produtos: "28", gmv: "R$ 84 mil", duracao: "2h 41min" },
-  { titulo: "Tech week: até 50% off", canal: "TechMax Brasil", status: "Ao vivo", espectadores: "8,7 mil", produtos: "19", gmv: "R$ 67 mil", duracao: "1h 58min" },
-  { titulo: "Achados de casa ao vivo", canal: "Casa & Cia Decor", status: "Ao vivo", espectadores: "5,2 mil", produtos: "33", gmv: "R$ 38 mil", duracao: "3h 12min" },
-  { titulo: "Esquenta fim de semana", canal: "Moda Bella Oficial", status: "Encerrada", espectadores: "9,8 mil", produtos: "41", gmv: "R$ 92 mil", duracao: "4h 05min" },
-  { titulo: "Show de ofertas eletrônicos", canal: "Top Elétrico BR", status: "Encerrada", espectadores: "11,3 mil", produtos: "22", gmv: "R$ 118 mil", duracao: "3h 44min" },
-  { titulo: "Beleza na sexta: kits exclusivos", canal: "Duda Cosméticos", status: "Encerrada", espectadores: "4,6 mil", produtos: "17", gmv: "R$ 41 mil", duracao: "2h 18min" },
 ]

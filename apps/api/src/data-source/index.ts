@@ -7,14 +7,24 @@ import { mockSource } from "./adapters/mock"
 import type { MarketDataSource, SourceName } from "./types"
 
 export type {
+  CreatorListOptions,
+  CreatorSort,
   ListOptions,
+  MarketCategory,
+  MarketCategoryDetail,
+  MarketCategoryStats,
   MarketCreative,
+  MarketCreator,
   MarketDataSource,
+  MarketLive,
   MarketProduct,
   MarketSummary,
   MarketTrendPoint,
   SourceName,
   TrendOptions,
+  VideoListOptions,
+  VideoPeriod,
+  VideoSort,
 } from "./types"
 export { EchotikApiError, isEchotikConfigured } from "./adapters/echotik"
 
@@ -39,8 +49,8 @@ function getPrimary(): Primary {
   if (selected === "echotik") {
     if (!isEchotikConfigured()) {
       throw new Error(
-        "MARKET_DATA_SOURCE=echotik exige ECHOTIK_USERNAME e ECHOTIK_PASSWORD " +
-          "(credenciais via customer service — docs/fornecedores.md §1.1)",
+        "MARKET_DATA_SOURCE=echotik exige ECHOTIK_RAPIDAPI_KEY " +
+          "(chave do gateway RapidAPI tiktok-ultra-api1)",
       )
     }
     return { name: "echotik", source: echotikSource }

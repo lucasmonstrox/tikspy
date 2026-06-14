@@ -4,6 +4,10 @@ import { VideosPage } from "@/features/concorrencia"
 
 export const metadata: Metadata = { title: "Vídeos & criativos" }
 
-export default function Page() {
-  return <VideosPage />
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  return <VideosPage searchParams={await searchParams} />
 }

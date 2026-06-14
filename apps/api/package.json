@@ -9,18 +9,22 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --target bun --outdir dist --external elysia --external @elysiajs/cors",
+    "preview": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@workspace/typescript-config": "workspace:*",
     "@types/bun": "^1.2.20",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.42.0"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.2",
     "@supabase/supabase-js": "^2.58.0",
     "@workspace/notifications": "workspace:*",
+    "date-fns": "^4.4.0",
     "elysia": "^1.4.28",
     "zod": "^4.4.3"
   }

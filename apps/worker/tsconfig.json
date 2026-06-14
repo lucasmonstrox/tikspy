@@ -1,11 +1,12 @@
 {
   "extends": "@workspace/typescript-config/base.json",
   "compilerOptions": {
-    "module": "Preserve",
+    "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "noEmit": true,
-    "types": ["bun"]
+    "types": ["@cloudflare/workers-types", "node"]
   },
-  "include": ["src/**/*.ts", "trigger.config.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }

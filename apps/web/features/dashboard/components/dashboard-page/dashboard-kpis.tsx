@@ -54,16 +54,6 @@ async function KpisContent() {
       deltaUp: (summary.topGmv24h.deltaPct ?? 0) >= 0,
       hint: "soma do ranking diário, vs. dia anterior",
     },
-    {
-      label: KPI_LABELS[3],
-      value: formatInteger(summary.emerging.count),
-      delta:
-        summary.emerging.delta === null
-          ? undefined
-          : formatSignedInteger(summary.emerging.delta),
-      deltaUp: (summary.emerging.delta ?? 0) >= 0,
-      hint: "novos no ranking",
-    },
   ]
 
   return <KpiRow items={kpis} />

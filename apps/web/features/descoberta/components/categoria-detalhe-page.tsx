@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation"
 
+import type { MarketProduct } from "api"
+
 import {
   Card,
   CardContent,
@@ -11,6 +13,10 @@ import {
 import {
   DataTable,
   Delta,
+  formatBrlCompact,
+  formatCompact,
+  formatDeltaPct,
+  formatInteger,
   KpiRow,
   MediaCell,
   PageHeader,
@@ -20,10 +26,9 @@ import {
 } from "@/shared"
 import type { DataColumn, Kpi } from "@/shared"
 
-import { CATEGORIA_PRODUTOS, CATEGORIAS } from "../mocks"
-import type { CategoriaProduto } from "../mocks"
+import { getMarketCategory } from "../services/categorias"
 
-const PRODUTOS_COLUMNS: DataColumn<CategoriaProduto>[] = [
+const PRODUTOS_COLUMNS: DataColumn<MarketProduct>[] = [
   {
     header: "#",
     className: "w-10",
@@ -34,32 +39,42 @@ const PRODUTOS_COLUMNS: DataColumn<CategoriaProduto>[] = [
   {
     header: "Produto",
     render: (row, index) => (
-      <MediaCell title={row.nome} subtitle={row.preco} seed={index} />
+      <MediaCell
+        title={row.name}
+        subtitle={row.category}
+        image={row.image}
+        seed={index}
+      />
     ),
   },
   {
-    header: "Vendas 7d",
+    header: "Vendas 24h",
     align: "right",
     render: (row) => (
-      <span className="font-mono text-sm font-medium">{row.vendas7d}</span>
-    ),
-  },
-  {
-    header: "GMV 7d",
-    align: "right",
-    render: (row) => (
-      <span className="font-mono text-sm text-muted-foreground">{row.gmv7d}</span>
+      <span className="font-mono text-sm font-medium">
+        {formatCompact(row.sales24h)}
+      </span>
     ),
   },
   {
     header: "Tendência",
     align: "right",
-    render: (row) => <Sparkline data={row.spark} up={row.up} />,
+    render: (row) => (
+      <Sparkline data={row.salesTrend} up={(row.salesDelta24h ?? 0) >= 0} />
+    ),
   },
   {
-    header: "Variação 7d",
+    header: "Variação 24h",
     align: "right",
-    render: (row) => <Delta value={row.variacao} up={row.up} />,
+    render: (row) =>
+      row.salesDelta24h === null ? (
+        <span className="text-sm text-muted-foreground/50">—</span>
+      ) : (
+        <Delta
+          value={formatDeltaPct(row.salesDelta24h)}
+          up={row.salesDelta24h >= 0}
+        />
+      ),
   },
   {
     header: "Score",
@@ -68,58 +83,79 @@ const PRODUTOS_COLUMNS: DataColumn<CategoriaProduto>[] = [
   },
 ]
 
-export function CategoriaDetalhePage({ slug }: { slug: string }) {
-  const categoria = CATEGORIAS.find((item) => item.slug === slug)
+export async function CategoriaDetalhePage({ slug }: { slug: string }) {
+  const detalhe = await getMarketCategory(slug)
 
-  if (!categoria) {
+  if (!detalhe) {
     notFound()
   }
 
-  const produtos = CATEGORIA_PRODUTOS[categoria.slug] ?? []
+  const { category, products } = detalhe
+  const emAlta = products.filter((produto) => (produto.salesDelta24h ?? 0) > 0)
+  const scoreMedio = products.length
+    ? Math.round(
+        products.reduce((total, produto) => total + produto.score, 0) /
+          products.length,
+      )
+    : null
 
   const kpis: Kpi[] = [
     {
-      label: "GMV da categoria (7d)",
-      value: categoria.gmv,
-      delta: categoria.crescimento,
-      deltaUp: categoria.up,
-      hint: "vs. semana anterior",
+      label: "GMV da categoria (24h)",
+      value: formatBrlCompact(category.gmv),
+      delta:
+        category.gmvDelta !== null
+          ? formatDeltaPct(category.gmvDelta)
+          : undefined,
+      deltaUp: (category.gmvDelta ?? 0) >= 0,
+      hint: "vs. dia anterior",
     },
     {
       label: "Produtos em alta",
-      value: categoria.emAlta,
-      hint: `de ${categoria.produtos} produtos ativos`,
+      value: formatInteger(emAlta.length),
+      hint: `de ${formatInteger(category.productCount)} no ranking`,
     },
     {
-      label: "Vendas (7d)",
-      value: categoria.vendas7d,
-      hint: "unidades estimadas",
+      label: "Vendas (24h)",
+      value: formatCompact(category.sales),
+      hint: "unidades no ranking",
     },
     {
       label: "Score médio",
-      value: String(categoria.scoreMedio),
-      hint: "produtos em alta",
+      value: scoreMedio === null ? "—" : String(scoreMedio),
+      hint: "produtos no ranking",
     },
   ]
 
   return (
     <PageShell>
       <PageHeader
-        title={categoria.nome}
-        description="Produtos em alta e desempenho da categoria nos últimos 7 dias."
+        title={category.name}
+        description="Produtos em alta e desempenho da categoria no ranking diário de vendas."
       >
-        <Delta value={categoria.crescimento} up={categoria.up} />
+        {category.gmvDelta !== null && (
+          <Delta
+            value={formatDeltaPct(category.gmvDelta)}
+            up={category.gmvDelta >= 0}
+          />
+        )}
       </PageHeader>
       <KpiRow items={kpis} />
       <Card>
         <CardHeader>
           <CardTitle>Produtos em alta</CardTitle>
           <CardDescription>
-            Maiores acelerações da categoria nos últimos 7 dias
+            Maiores vendas da categoria no ranking diário
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable bare columns={PRODUTOS_COLUMNS} rows={produtos} />
+          {products.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Sem produtos no ranking desta categoria hoje.
+            </p>
+          ) : (
+            <DataTable bare columns={PRODUTOS_COLUMNS} rows={products} />
+          )}
         </CardContent>
       </Card>
     </PageShell>

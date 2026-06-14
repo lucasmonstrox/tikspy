@@ -35,7 +35,12 @@ const COLUMNS: DataColumn<MarketProduct>[] = [
   {
     header: "Produto",
     render: (row, index) => (
-      <MediaCell title={row.name} subtitle={row.category} seed={index} />
+      <MediaCell
+        title={row.name}
+        subtitle={row.category}
+        image={row.image}
+        seed={index}
+      />
     ),
   },
   {

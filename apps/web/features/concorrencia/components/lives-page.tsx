@@ -7,7 +7,7 @@ export function LivesPage() {
     <PageShell>
       <PageHeader
         title="Lives"
-        description="Monitoramento de lives de venda — o motor do TikTok Shop Brasil."
+        description="Lives de venda no ar agora no Brasil — o motor do TikTok Shop, em tempo-real."
       />
       <LivesTab />
     </PageShell>

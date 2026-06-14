@@ -362,6 +362,18 @@ Os dois maiores centros de custo são **scraping/proxies** e **armazenamento/egr
 - **CI/CD:** Vercel Git deploys + **Turborepo remote cache** (já no monorepo).
 - **Escala de compute:** plano de controle escala automático na Vercel; plano de dados escala horizontalmente (N workers + fila + concorrência por chave para respeitar rate limits/anti-bot).
 
+#### Infraestrutura como código (IaC) — nota
+
+Há dois níveis, que costumam ser confundidos:
+
+- **Config como código (já em uso):** o `wrangler.jsonc` de `apps/web` já é infra declarativa, versionada no git e reconciliada no deploy — descreve o Worker, bindings e flags de compatibilidade. Para um projeto com **um** recurso Cloudflare (o Worker que serve o Next via OpenNext), isto basta.
+- **IaC de conta inteira (não adotado):** ferramentas que gerenciam *todos* os recursos da conta (DNS, WAF, R2, D1, KV, Queues, Workers) num só lugar, com **state** e `plan/diff` antes de aplicar — detectam divergência feita pelo painel. Opções:
+  - **Terraform** — provider oficial `cloudflare/cloudflare` v5.x (recursos `cloudflare_worker`, `cloudflare_workers_deployment`, `cloudflare_workflow`, `cloudflare_workers_script`). Linguagem HCL.
+  - **Pulumi** — mesma API da Cloudflare, mas escrito em **TypeScript** (mesma linguagem do monorepo, sem aprender HCL).
+  - **Alchemy** — IaC nativo em TS feito especificamente para Cloudflare.
+
+**Decisão atual:** ficar no `wrangler.jsonc`. Terraform/Pulumi/Alchemy só passam a valer a pena quando houver **múltiplos recursos Cloudflare** (R2 p/ criativos, KV/cache, D1, Queues), gestão de **DNS/WAF por código**, ou um **staging** que precise ser idêntico a prod. Nesse dia, preferir **Alchemy ou Pulumi** (TS) a Terraform puro. Anotado aqui por curiosidade/referência.
+
 ---
 
 ## 11. Stack Recomendada Consolidada

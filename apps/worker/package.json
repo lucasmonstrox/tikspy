@@ -4,19 +4,20 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "trigger dev --profile default",
-    "deploy": "trigger deploy --profile default",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@workspace/typescript-config": "workspace:*",
-    "@types/bun": "^1.2.20",
-    "trigger.dev": "4.4.6",
-    "typescript": "^5"
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "@types/node": "^20",
+    "typescript": "^5",
+    "wrangler": "^4.42.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
-    "@trigger.dev/sdk": "4.4.6",
     "@workspace/notifications": "workspace:*",
     "zod": "^4.4.3"
   }

@@ -14,7 +14,7 @@ const PUBLIC_PATHS = [
  * Refresca a sessão Supabase em cada request e redireciona para /login
  * quem não está autenticado fora das rotas públicas.
  *
- * Chamado pelo proxy.ts da raiz (convenção Next 16).
+ * Chamado pelo middleware.ts da raiz (Edge runtime, exigido pelo OpenNext).
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })

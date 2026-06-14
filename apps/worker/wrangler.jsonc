@@ -1,0 +1,33 @@
+// tikspy-worker: motor de alertas no Cloudflare Workers (workerd).
+// Cron (Workflow schedules) + Workflow durável + Queue serializada.
+// Local: bunx wrangler dev (lê .env). Deploy: bunx wrangler deploy.
+{
+  "name": "tikspy-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "workflows": [
+    {
+      "name": "tikspy-evaluate-alerts",
+      "binding": "ALERTS_WORKFLOW",
+      "class_name": "EvaluateAlertsWorkflow",
+      // Cron diário: 09:30 UTC (T+1, 30min após o sync de mercado planejado).
+      "schedules": ["30 9 * * *"]
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "WHATSAPP_QUEUE", "queue": "whatsapp-send" }],
+    "consumers": [
+      {
+        "queue": "whatsapp-send",
+        // 1 número broadcasting p/ muitos: serializa (anti-ban é o requisito nº 1).
+        "max_concurrency": 1,
+        "max_batch_size": 1,
+        "max_retries": 3,
+        "retry_delay": 30,
+        "dead_letter_queue": "whatsapp-send-dlq"
+      }
+    ]
+  }
+}
