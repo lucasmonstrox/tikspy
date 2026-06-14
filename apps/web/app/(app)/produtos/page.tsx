@@ -4,6 +4,10 @@ import { ProdutosPage } from "@/features/descoberta"
 
 export const metadata: Metadata = { title: "Buscar produtos" }
 
-export default function Page() {
-  return <ProdutosPage />
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  return <ProdutosPage searchParams={await searchParams} />
 }

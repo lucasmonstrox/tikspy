@@ -3,9 +3,8 @@ import { PageHeader, PageShell } from "@/shared"
 import { DashboardKpis } from "./dashboard-kpis"
 import { LiveBadge } from "./live-badge"
 import { MarketTrendCard } from "./market-trend-card"
+import { TopCreativesCard } from "./top-creatives-card/top-creatives-card"
 import { TopProductsCard } from "./top-products-card"
-import { TopSellingCreativesCard } from "./top-selling-creatives-card"
-import { TrendingCreativesCard } from "./trending-creatives-card"
 
 export function DashboardPage() {
   return (
@@ -18,8 +17,7 @@ export function DashboardPage() {
       </PageHeader>
       <DashboardKpis />
       <TopProductsCard />
-      <TrendingCreativesCard />
-      <TopSellingCreativesCard />
+      <TopCreativesCard />
       <MarketTrendCard />
     </PageShell>
   )

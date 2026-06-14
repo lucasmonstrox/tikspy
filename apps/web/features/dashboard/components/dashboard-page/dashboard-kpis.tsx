@@ -26,26 +26,6 @@ async function KpisContent() {
   const kpis: Kpi[] = [
     {
       label: KPI_LABELS[0],
-      value: formatInteger(summary.bestsellers.count),
-      delta:
-        summary.bestsellers.delta === null
-          ? undefined
-          : formatSignedInteger(summary.bestsellers.delta),
-      deltaUp: (summary.bestsellers.delta ?? 0) >= 0,
-      hint: "acima de 500 vendas/dia",
-    },
-    {
-      label: KPI_LABELS[1],
-      value: formatInteger(summary.trendingCreatives.count),
-      delta:
-        summary.trendingCreatives.delta === null
-          ? undefined
-          : formatSignedInteger(summary.trendingCreatives.delta),
-      deltaUp: (summary.trendingCreatives.delta ?? 0) >= 0,
-      hint: "virais nas últimas 24h",
-    },
-    {
-      label: KPI_LABELS[2],
       value: formatBrlCompact(summary.topGmv24h.amount),
       delta:
         summary.topGmv24h.deltaPct === null
@@ -53,6 +33,26 @@ async function KpisContent() {
           : formatDeltaPct(summary.topGmv24h.deltaPct),
       deltaUp: (summary.topGmv24h.deltaPct ?? 0) >= 0,
       hint: "soma do ranking diário, vs. dia anterior",
+    },
+    {
+      label: KPI_LABELS[1],
+      value: formatBrlCompact(summary.creativesGmv24h.amount),
+      delta:
+        summary.creativesGmv24h.deltaPct === null
+          ? undefined
+          : formatDeltaPct(summary.creativesGmv24h.deltaPct),
+      deltaUp: (summary.creativesGmv24h.deltaPct ?? 0) >= 0,
+      hint: "soma do ranking de criativos, vs. dia anterior",
+    },
+    {
+      label: KPI_LABELS[2],
+      value: formatInteger(summary.trendingCreatives.count),
+      delta:
+        summary.trendingCreatives.delta === null
+          ? undefined
+          : formatSignedInteger(summary.trendingCreatives.delta),
+      deltaUp: (summary.trendingCreatives.delta ?? 0) >= 0,
+      hint: "virais nas últimas 24h",
     },
   ]
 

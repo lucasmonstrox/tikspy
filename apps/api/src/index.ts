@@ -45,6 +45,32 @@ const creatorsQuery = t.Object({
   limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100 })),
 })
 
+const productsQuery = t.Object({
+  query: t.Optional(t.String()),
+  category: t.Optional(t.String()),
+  minPrice: t.Optional(t.Numeric({ minimum: 0 })),
+  maxPrice: t.Optional(t.Numeric({ minimum: 0 })),
+  minCommission: t.Optional(t.Numeric({ minimum: 0, maximum: 1 })),
+  momentum: t.Optional(
+    t.Union([
+      t.Literal("todos"),
+      t.Literal("emergente"),
+      t.Literal("consolidado"),
+    ]),
+  ),
+  sort: t.Optional(
+    t.Union([
+      t.Literal("sales"),
+      t.Literal("sales7d"),
+      t.Literal("sales30d"),
+      t.Literal("price"),
+      t.Literal("score"),
+    ]),
+  ),
+  sortDir: t.Optional(t.Union([t.Literal("asc"), t.Literal("desc")])),
+  limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100 })),
+})
+
 const trendQuery = t.Object({
   days: t.Optional(t.Numeric({ minimum: 7, maximum: 90 })),
 })
@@ -64,6 +90,25 @@ const market = new Elysia({ prefix: "/v1/market" })
   .get("/summary", ({ set }) =>
     respond(set.headers, (source) => source.getMarketSummary()),
   )
+  // Descoberta de produtos com filtros (product/list) — base do /produtos.
+  .get(
+    "/products",
+    ({ query, set }) =>
+      respond(set.headers, (source) =>
+        source.getProducts({
+          query: query.query,
+          category: query.category,
+          minPrice: query.minPrice,
+          maxPrice: query.maxPrice,
+          minCommission: query.minCommission,
+          momentum: query.momentum,
+          sort: query.sort,
+          sortDir: query.sortDir,
+          limit: query.limit,
+        }),
+      ),
+    { query: productsQuery },
+  )
   .get(
     "/products/top",
     ({ query, set }) =>
@@ -71,6 +116,24 @@ const market = new Elysia({ prefix: "/v1/market" })
         source.getTopProducts({ limit: query.limit }),
       ),
     { query: listQuery },
+  )
+  // Estático antes do dinâmico (:id) — "/products/top" não pode cair no :id.
+  .get(
+    "/products/:id",
+    async ({ params, set, status }) => {
+      try {
+        return await respond(set.headers, (source) =>
+          source.getProductDetail(params.id),
+        )
+      } catch (error) {
+        // product_id sem ficha no EchoTik → 404 tipado (não polui o tipo do 200).
+        if (error instanceof EchotikApiError && error.status === 404) {
+          return status(404, { error: "product_not_found" })
+        }
+        throw error
+      }
+    },
+    { params: t.Object({ id: t.String() }) },
   )
   .get(
     "/creatives/trending",
@@ -196,8 +259,15 @@ export type {
   MarketCreator,
   MarketLive,
   MarketProduct,
+  MarketProductCreator,
+  MarketProductDetail,
+  MarketProductListItem,
+  MarketProductVideo,
   MarketSummary,
   MarketTrendPoint,
+  ProductListOptions,
+  ProductMomentum,
+  ProductSort,
   SourceName,
   VideoPeriod,
   VideoSort,

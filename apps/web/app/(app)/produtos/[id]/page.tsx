@@ -4,6 +4,11 @@ import { ProdutoDetalhePage } from "@/features/descoberta"
 
 export const metadata: Metadata = { title: "Produto" }
 
-export default function Page() {
-  return <ProdutoDetalhePage />
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  return <ProdutoDetalhePage id={id} />
 }

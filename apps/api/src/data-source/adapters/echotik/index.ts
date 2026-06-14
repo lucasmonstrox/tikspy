@@ -9,15 +9,21 @@ import {
 } from "date-fns"
 
 import {
-  BESTSELLER_MIN_SALES_24H,
   CATEGORY_DETAIL_PAGES,
   CATEGORY_DETAIL_PRODUCTS,
   CATEGORY_LANGUAGE,
   CATEGORY_RANK_PAGES,
+  CONSOLIDADO_MIN_TOTAL_SALES,
+  EMERGENTE_MAX_AGE_DAYS,
   INFLUENCER_PAGES,
   INFLUENCER_PAGE_SIZE,
   LIVE_ENRICH_LIMIT,
   LIVE_KEYWORDS,
+  PRODUCT_DETAIL_CREATORS,
+  PRODUCT_DETAIL_VIDEOS,
+  PRODUCT_LIST_PAGES,
+  PRODUCT_LIST_PAGE_SIZE,
+  PRODUCT_SEARCH_SIZE,
   RANK_PAGES,
   RANK_PAGE_SIZE,
   REGION,
@@ -36,6 +42,10 @@ import type {
   MarketCreator,
   MarketDataSource,
   MarketLive,
+  MarketProductDetail,
+  MarketProductListItem,
+  ProductListOptions,
+  ProductSort,
   VideoListOptions,
   VideoPeriod,
   VideoSort,
@@ -52,21 +62,34 @@ import {
   toMarketCreatives,
   toMarketCreators,
   toMarketLives,
+  toMarketProductListItems,
   toMarketProducts,
+  toProductCreators,
+  toProductDetail,
+  toProductVideos,
 } from "./mappers"
 import {
   categoryItemSchema,
+  influencerHandleItemSchema,
   influencerListItemSchema,
   liveDetailSchema,
   liveSearchEnvelopeSchema,
+  productDetailFullSchema,
   productDetailItemSchema,
+  productInfluencerItemSchema,
+  productListItemSchema,
+  productVideoItemSchema,
   rankItemSchema,
+  searchProductItemSchema,
   videoItemSchema,
 } from "./schemas"
 import type {
   InfluencerListItem,
   LiveSearchItem,
   ProductDetailItem,
+  ProductListItem,
+  SearchProductItem,
+  ProductVideoItem,
   RankItem,
   VideoItem,
 } from "./schemas"
@@ -202,24 +225,42 @@ async function fetchVideoRankPage(
   return videoItemSchema.array().parse(data ?? [])
 }
 
+/** Ranking de vídeos de UMA data específica (sem recuo), paginado (10/pág). */
+async function fetchVideoRankForDate(
+  date: string,
+  params: VideoRankParams,
+): Promise<VideoItem[]> {
+  const pages = await Promise.all(
+    Array.from({ length: VIDEO_PAGES }, (_, index) =>
+      fetchVideoRankPage(date, index + 1, params),
+    ),
+  )
+  return pages.flat()
+}
+
 /**
  * Ranking de vídeos já ordenado pelo servidor, paginado (trial limita a 10/pág).
- * Percorre as datas-candidatas e devolve a primeira com dados (cadência T+1).
+ * Percorre as datas-candidatas e devolve a primeira com dados (cadência T+1),
+ * junto da data que resolveu — necessária para ancorar o delta vs. ontem.
  */
+async function fetchVideoRankWithDate(
+  period: VideoPeriod,
+  params: VideoRankParams,
+): Promise<{ date: string; items: VideoItem[] }> {
+  const dates = videoRankDates(period)
+  for (const date of dates) {
+    const items = await fetchVideoRankForDate(date, params)
+    if (items.length > 0) return { date, items }
+  }
+  return { date: dates[0]!, items: [] }
+}
+
+/** Só os itens do ranking de vídeos (descarta a data que resolveu). */
 async function fetchVideoRank(
   period: VideoPeriod,
   params: VideoRankParams,
 ): Promise<VideoItem[]> {
-  for (const date of videoRankDates(period)) {
-    const pages = await Promise.all(
-      Array.from({ length: VIDEO_PAGES }, (_, index) =>
-        fetchVideoRankPage(date, index + 1, params),
-      ),
-    )
-    const items = pages.flat()
-    if (items.length > 0) return items
-  }
-  return []
+  return (await fetchVideoRankWithDate(period, params)).items
 }
 
 /**
@@ -530,6 +571,220 @@ async function getCreators(
   return creators.slice(0, limit)
 }
 
+/**
+ * Resolve user_id → @handle (unique_id) dos autores dos vídeos do produto via
+ * influencer/detail (batch, máx. 10). O product/video/list só traz user_id.
+ * Best-effort: erro ou autor fora da base → vídeo fica sem handle (sem quebrar).
+ */
+async function fetchVideoHandles(
+  videos: ProductVideoItem[],
+): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(
+      videos
+        .map((video) => video.user_id)
+        .filter((userId): userId is string => Boolean(userId)),
+    ),
+  ].slice(0, 10)
+  if (ids.length === 0) return new Map()
+  try {
+    const data = await echotikFetch("/echotik/influencer/detail", {
+      user_ids: ids.join(","),
+    })
+    return new Map(
+      influencerHandleItemSchema
+        .array()
+        .parse(data ?? [])
+        .filter((item) => item.unique_id)
+        .map((item) => [item.user_id, item.unique_id!]),
+    )
+  } catch {
+    return new Map()
+  }
+}
+
+// Sort da UI → product_sort_field do product/list (1=vendas totais, 3=preço,
+// 4=vendas 7d, 5=vendas 30d). "score" é derivado → ordena pós-fetch.
+const PRODUCT_SORT_FIELD: Record<Exclude<ProductSort, "score">, number> = {
+  sales: 1,
+  sales7d: 4,
+  sales30d: 5,
+  price: 3,
+}
+
+/** yyyyMMdd (int) de N dias atrás — alimenta min_first_crawl_dt (frescor). */
+function crawlDateNDaysAgo(days: number): number {
+  return Number(format(subDays(new Date(), days), "yyyyMMdd"))
+}
+
+/** Uma página do product/list com filtros + preset de momento já aplicados. */
+async function fetchProductListPage(
+  page: number,
+  options: ProductListOptions,
+): Promise<ProductListItem[]> {
+  const sort = options.sort ?? "sales30d"
+  const query: Record<string, string | number> = {
+    region: REGION,
+    page_num: page,
+    page_size: PRODUCT_LIST_PAGE_SIZE,
+    off_mark: 0, // exclui produtos descontinuados
+    sort_type: options.sortDir === "asc" ? 0 : 1,
+    // score não tem campo server-side → ranqueia por 30d e reordena pós-fetch.
+    product_sort_field:
+      sort === "score" ? PRODUCT_SORT_FIELD.sales30d : PRODUCT_SORT_FIELD[sort],
+  }
+  if (options.category) query.category_id = options.category
+  if (options.minPrice !== undefined) query.min_spu_avg_price = options.minPrice
+  if (options.maxPrice !== undefined) query.max_spu_avg_price = options.maxPrice
+  if (options.minCommission !== undefined)
+    query.min_product_commission_rate = options.minCommission
+
+  // Presets de "momento" (tendência + idade/volume). Ambos exigem alta (flag=1).
+  const momentum = options.momentum ?? "todos"
+  if (momentum === "emergente") {
+    query.sales_trend_flag = 1 // subindo
+    query.min_first_crawl_dt = crawlDateNDaysAgo(EMERGENTE_MAX_AGE_DAYS) // novo
+  } else if (momentum === "consolidado") {
+    query.sales_trend_flag = 1 // subindo
+    query.min_total_sale_cnt = CONSOLIDADO_MIN_TOTAL_SALES // estabelecido
+  }
+
+  const data = await echotikFetch("/echotik/product/list", query)
+  return productListItemSchema.array().parse(data ?? [])
+}
+
+// Sort da UI → sortType do search/items (só válido em type=2). 0=relevância,
+// 1=preço, 2=vendas 7d (default), 4=vendas totais. Sem 30d e sem direção → o
+// score reordena pós-fetch e o resto aceita a ordem do servidor.
+const SEARCH_SORT_TYPE: Record<ProductSort, number> = {
+  price: 1,
+  sales: 4,
+  sales7d: 2,
+  sales30d: 2,
+  score: 2,
+}
+
+/**
+ * cover_url do search/items vem MALFORMADO (não-JSON: `[{index=1, url=https://
+ * ...}]`). Extrai a 1ª URL por regex e a re-embrulha como JSON pra reusar o
+ * firstCoverUrl/assinatura de capas do fluxo normal.
+ */
+function searchCoverUrl(raw?: string | null): string | null {
+  if (!raw) return null
+  const match = raw.match(/url=([^,}\]]+)/)
+  return match ? match[1]!.trim() : null
+}
+
+/**
+ * Item da busca → shape do product/list (sintético), pra reusar o mapper. Os
+ * campos que a busca NÃO traz (comissão, rating, frescor, tendência, janela 30d)
+ * viram null/0; 30d cai no 7d como proxy. Honesto: a busca é "achar por nome",
+ * com card mais magro (a doc manda chamar o detalhe pra ficha completa).
+ */
+function searchToListItem(item: SearchProductItem): ProductListItem {
+  const cover = searchCoverUrl(item.cover_url)
+  return {
+    product_id: item.product_id,
+    product_name: item.product_name,
+    category_id: item.category_id,
+    cover_url: cover ? JSON.stringify([{ url: cover, index: 0 }]) : null,
+    min_price: item.spu_avg_price,
+    max_price: item.spu_avg_price,
+    spu_avg_price: item.spu_avg_price,
+    product_commission_rate: null,
+    product_rating: null,
+    review_count: null,
+    first_crawl_dt: null,
+    sales_trend_flag: 0,
+    total_sale_cnt: item.total_sale_cnt,
+    total_sale_1d_cnt: 0,
+    total_sale_7d_cnt: item.total_sale_7d_cnt,
+    total_sale_30d_cnt: item.total_sale_7d_cnt,
+    total_sale_gmv_30d_amt: item.total_sale_gmv_7d_amt,
+    total_video_cnt: item.total_video_cnt,
+    total_ifl_cnt: item.total_ifl_cnt,
+  }
+}
+
+/**
+ * Busca de produto por nome via search/items (type=2). Teto de 30, sem
+ * paginação. Os demais filtros não existem nesse endpoint: a categoria é
+ * pós-filtrada (a busca devolve category_id); comissão/momento não se aplicam.
+ */
+async function searchProducts(
+  options: ProductListOptions,
+): Promise<MarketProductListItem[]> {
+  const limit = options.limit ?? 24
+  const sort = options.sort ?? "sales30d"
+  const [data, nameById] = await Promise.all([
+    echotikFetch("/echotik/search/items", {
+      sk: options.query!,
+      region: REGION,
+      type: 2,
+      size: PRODUCT_SEARCH_SIZE,
+      searchType: 0,
+      sortType: SEARCH_SORT_TYPE[sort],
+    }),
+    fetchCategoryNameMap(),
+  ])
+  let items = searchProductItemSchema.array().parse(data ?? [])
+  if (options.category)
+    items = items.filter((item) => item.category_id === options.category)
+
+  const listItems = items.map(searchToListItem)
+  const covers = await signCoverUrls(
+    listItems
+      .map((item) => firstCoverUrl(item.cover_url))
+      .filter((url): url is string => Boolean(url)),
+  )
+  let products = toMarketProductListItems(listItems, covers, nameById)
+  if (sort === "score") {
+    const dir = options.sortDir === "asc" ? 1 : -1
+    products = [...products].sort((a, b) => (a.score - b.score) * dir)
+  }
+  return products.slice(0, limit)
+}
+
+/**
+ * Descoberta de produtos via product/list (offline T+1, filtros server-side).
+ * page_size travado em 10 → pagina PRODUCT_LIST_PAGES. O product/list é
+ * auto-suficiente (preço/comissão/janelas/tendência), então não há enrich por
+ * detalhe — só assinamos as capas. `score` é derivado, então sort=score é
+ * aplicado pós-fetch sobre a janela trazida (o resto é server-side). Com busca
+ * por nome (`query`), roteia pro search/items (filtros server-side não existem lá).
+ */
+async function getProducts(
+  options?: ProductListOptions,
+): Promise<MarketProductListItem[]> {
+  const opts = options ?? {}
+  if (opts.query) return searchProducts(opts)
+  const limit = opts.limit ?? 24
+  const [pages, nameById] = await Promise.all([
+    Promise.all(
+      Array.from({ length: PRODUCT_LIST_PAGES }, (_, index) =>
+        fetchProductListPage(index + 1, opts),
+      ),
+    ),
+    fetchCategoryNameMap(),
+  ])
+  const items = pages.flat()
+
+  // Assina as capas (echosell → 403 direto) — lotes de 10, sem custo de cota.
+  const covers = await signCoverUrls(
+    items
+      .map((item) => firstCoverUrl(item.cover_url))
+      .filter((url): url is string => Boolean(url)),
+  )
+  let products = toMarketProductListItems(items, covers, nameById)
+
+  // Score não tem campo de sort no product/list → ordena pós-fetch.
+  if ((opts.sort ?? "sales30d") === "score") {
+    const dir = opts.sortDir === "asc" ? 1 : -1
+    products = [...products].sort((a, b) => (a.score - b.score) * dir)
+  }
+  return products.slice(0, limit)
+}
+
 export const echotikSource: MarketDataSource = {
   async getTopProducts(options?: ListOptions) {
     const limit = options?.limit ?? 10
@@ -549,6 +804,68 @@ export const echotikSource: MarketDataSource = {
         .filter((url): url is string => Boolean(url)),
     )
     return toMarketProducts(top, details, covers, nameById)
+  },
+
+  getProducts,
+
+  async getProductDetail(id: string): Promise<MarketProductDetail> {
+    // 3 chamadas (a fila do client serializa com gap): ficha + criadores (por
+    // vendas do produto) + vídeos (por views). O catálogo resolve o nome da
+    // categoria (cacheado — o dashboard já costuma tê-lo aquecido).
+    const [detailRaw, creatorsRaw, videosRaw, nameById] = await Promise.all([
+      echotikFetch("/echotik/product/detail", { product_ids: id }),
+      echotikFetch("/echotik/product/influencer/list", {
+        product_id: id,
+        page_num: 1,
+        page_size: PRODUCT_DETAIL_CREATORS,
+        product_influencer_sort_field: 3, // per_product_ifl_sale_cnt (vendas do produto)
+        sort_type: 1,
+      }),
+      echotikFetch("/echotik/product/video/list", {
+        product_id: id,
+        page_num: 1,
+        page_size: PRODUCT_DETAIL_VIDEOS,
+        product_video_sort_field: 1, // total_views_cnt
+        sort_type: 1,
+      }),
+      fetchCategoryNameMap(),
+    ])
+
+    const detail = productDetailFullSchema.array().parse(detailRaw ?? [])[0]
+    if (!detail) {
+      throw new EchotikApiError(
+        404,
+        "/echotik/product/detail",
+        `produto ${id} sem ficha`,
+      )
+    }
+
+    const creators = toProductCreators(
+      productInfluencerItemSchema.array().parse(creatorsRaw ?? []),
+    )
+    const videoItems = productVideoItemSchema.array().parse(videosRaw ?? [])
+
+    // Assina num lote só: capa do produto + capas dos vídeos (echosell → 403).
+    const productCover = firstCoverUrl(detail.cover_url)
+    const covers = await signCoverUrls(
+      [productCover, ...videoItems.map((video) => video.reflow_cover ?? null)]
+        .filter((url): url is string => Boolean(url)),
+    )
+
+    const image = productCover ? (covers.get(productCover) ?? null) : null
+    const categoryName =
+      (detail.category_id && nameById.get(detail.category_id)) || "—"
+
+    // O video/list só traz user_id — resolve o @handle num batch best-effort.
+    const handleByUserId = await fetchVideoHandles(videoItems)
+
+    return toProductDetail(
+      detail,
+      image,
+      categoryName,
+      creators,
+      toProductVideos(videoItems, covers, handleByUserId),
+    )
   },
 
   getCreators,
@@ -574,49 +891,55 @@ export const echotikSource: MarketDataSource = {
   },
 
   async getMarketSummary() {
-    const [today, videos] = await Promise.all([
+    const topSellingParams = {
+      rankField: VIDEO_RANK_FIELD["top-selling"],
+      rankType: 1,
+    }
+    const [today, trendingVideos, topSelling] = await Promise.all([
       fetchDailyRank(1),
       // Contagem de "criativos em alta" do dia (rank por views).
       fetchVideoRank("day", { rankField: VIDEO_RANK_FIELD.trending, rankType: 1 }),
+      // "Top criativos" = ranking de vídeos por GMV/vendas; guardamos a data
+      // que resolveu para ancorar o delta vs. ontem.
+      fetchVideoRankWithDate("day", topSellingParams),
     ])
-    // "Ontem" é ancorado no dia que "hoje" resolveu (a âncora), não recuado de
-    // forma independente: como o ranklist é T+1, recuos separados colidiam no
-    // mesmo dia e zeravam o delta. Comparamos a âncora com o dia imediatamente
-    // anterior; se esse dia ainda não existe, não há base de comparação.
-    const yesterdayItems = today.items.length
-      ? await fetchRankForDate(previousDay(today.date))
-      : []
-    const hasComparison = yesterdayItems.length > 0
+    // "Ontem" é ancorado no dia que cada ranking resolveu (a âncora), não
+    // recuado de forma independente: como os rankings são T+1, recuos separados
+    // colidiriam no mesmo dia e zerariam o delta. Sem âncora → sem comparação.
+    const [productsYesterday, creativesYesterday] = await Promise.all([
+      today.items.length
+        ? fetchRankForDate(previousDay(today.date))
+        : Promise.resolve<RankItem[]>([]),
+      topSelling.items.length
+        ? fetchVideoRankForDate(previousDay(topSelling.date), topSellingParams)
+        : Promise.resolve<VideoItem[]>([]),
+    ])
 
-    const countBestsellers = (items: RankItem[]) =>
-      items.filter((item) => item.total_sale_cnt >= BESTSELLER_MIN_SALES_24H)
-        .length
     const sumGmv = (items: RankItem[]) =>
       items.reduce((total, item) => total + item.total_sale_gmv_amt, 0)
+    const sumCreativeGmv = (items: VideoItem[]) =>
+      items.reduce((total, item) => total + item.total_video_sale_gmv_amt, 0)
+    // Variação % do dia vs. ontem; null quando não há base de comparação.
+    const deltaPct = (now: number, before: number) =>
+      before > 0 ? now / before - 1 : null
 
-    const bestsellersToday = countBestsellers(today.items)
-    const gmvToday = sumGmv(today.items)
-    const gmvYesterday = sumGmv(yesterdayItems)
+    const topGmvToday = sumGmv(today.items)
+    const creativesGmvToday = sumCreativeGmv(topSelling.items)
 
     return {
-      bestsellers: {
-        count: bestsellersToday,
-        delta: hasComparison
-          ? bestsellersToday - countBestsellers(yesterdayItems)
-          : null,
+      creativesGmv24h: {
+        amount: creativesGmvToday,
+        deltaPct: deltaPct(creativesGmvToday, sumCreativeGmv(creativesYesterday)),
       },
       trendingCreatives: {
-        count: videos.filter(
+        count: trendingVideos.filter(
           (video) => video.total_views_cnt >= VIRAL_MIN_VIEWS_24H,
         ).length,
         delta: null,
       },
       topGmv24h: {
-        amount: gmvToday,
-        deltaPct:
-          hasComparison && gmvYesterday > 0
-            ? gmvToday / gmvYesterday - 1
-            : null,
+        amount: topGmvToday,
+        deltaPct: deltaPct(topGmvToday, sumGmv(productsYesterday)),
       },
     }
   },

@@ -5,12 +5,16 @@ import type {
   MarketDataSource,
   MarketLive,
   MarketProduct,
+  MarketProductCreator,
+  MarketProductDetail,
+  MarketProductListItem,
+  MarketProductVideo,
   MarketSummary,
   MarketTrendPoint,
 } from "../../types"
 
 const MOCK_SUMMARY: MarketSummary = {
-  bestsellers: { count: 132, delta: 18 },
+  creativesGmv24h: { amount: 1_900_000, deltaPct: 0.214 },
   trendingCreatives: { count: 48, delta: 15 },
   topGmv24h: { amount: 4_800_000, deltaPct: 0.182 },
 }
@@ -71,6 +75,40 @@ const MOCK_PRODUCTS: MarketProduct[] = [
     score: 41,
   },
 ]
+
+/** delta de ritmo → tendência textual (mesma regra do adapter EchoTik). */
+function mockTrendFlag(delta: number | null): "up" | "stable" | "down" {
+  if (delta == null) return "stable"
+  if (delta > 0.05) return "up"
+  if (delta < -0.05) return "down"
+  return "stable"
+}
+
+// Lista de descoberta (/produtos): deriva dos MOCK_PRODUCTS sintetizando os
+// campos extras (preço/comissão/janelas/criadores) que o product/list traz.
+const MOCK_PRODUCT_LIST: MarketProductListItem[] = MOCK_PRODUCTS.map(
+  (product, index) => ({
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    image: null,
+    priceMin: 39.9 + index * 10,
+    priceMax: 59.9 + index * 14,
+    commissionRate: 0.12 + (index % 5) * 0.03,
+    rating: Math.round((4.9 - index * 0.1) * 10) / 10,
+    reviewCount: 1_800 - index * 180,
+    sales7d: Math.round(product.sales24h * 5.5),
+    sales30d: Math.round(product.sales24h * 22),
+    salesTotal: Math.round(product.sales24h * 60),
+    salesTrend: product.salesTrend.slice(-3),
+    salesDelta: product.salesDelta24h,
+    trendFlag: mockTrendFlag(product.salesDelta24h),
+    creatorCount: 120 - index * 12,
+    videoCount: 240 - index * 24,
+    firstSeen: "2026-05-20",
+    score: product.score,
+  }),
+)
 
 const MOCK_CREATIVES: MarketCreative[] = [
   {
@@ -274,6 +312,95 @@ export const mockSource: MarketDataSource = {
 
   async getTopProducts(options) {
     return MOCK_PRODUCTS.slice(0, options?.limit ?? MOCK_PRODUCTS.length)
+  },
+
+  async getProducts(options) {
+    const opts = options ?? {}
+    let list = [...MOCK_PRODUCT_LIST]
+    if (opts.query) {
+      const q = opts.query.toLowerCase()
+      list = list.filter((product) => product.name.toLowerCase().includes(q))
+    }
+    if (opts.minPrice !== undefined)
+      list = list.filter((product) => (product.priceMin ?? 0) >= opts.minPrice!)
+    if (opts.maxPrice !== undefined)
+      list = list.filter((product) => (product.priceMax ?? 0) <= opts.maxPrice!)
+    if (opts.minCommission !== undefined)
+      list = list.filter(
+        (product) => (product.commissionRate ?? 0) >= opts.minCommission!,
+      )
+    // emergente/consolidado exigem tendência de alta (o mock não tem idade real).
+    if (opts.momentum === "emergente" || opts.momentum === "consolidado")
+      list = list.filter((product) => product.trendFlag === "up")
+    // categoria vem como id no real (sem equivalência no mock) → ignorada aqui.
+
+    const dir = opts.sortDir === "asc" ? 1 : -1
+    const sort = opts.sort ?? "sales30d"
+    const metric = (product: MarketProductListItem) =>
+      sort === "price"
+        ? (product.priceMin ?? 0)
+        : sort === "sales"
+          ? product.salesTotal
+          : sort === "sales7d"
+            ? product.sales7d
+            : sort === "score"
+              ? product.score
+              : product.sales30d
+    list.sort((a, b) => (metric(a) - metric(b)) * dir)
+
+    return list.slice(0, opts.limit ?? list.length)
+  },
+
+  async getProductDetail(id): Promise<MarketProductDetail> {
+    const product =
+      MOCK_PRODUCTS.find((item) => item.id === id) ?? MOCK_PRODUCTS[0]!
+    const creators: MarketProductCreator[] = MOCK_CREATIVES.slice(0, 5).map(
+      (creative, index) => ({
+        id: `${product.id}-cr-${index}`,
+        name: creative.creatorHandle.replace(/^@/, ""),
+        avatar: null,
+        niche: "Variados",
+        followers: 220_000 - index * 32_000,
+        videos: 14 - index,
+        views: creative.views,
+        productSales: Math.round(product.sales24h / (index + 2)),
+      }),
+    )
+    const videos: MarketProductVideo[] = MOCK_CREATIVES.slice(0, 6).map(
+      (creative, index) => ({
+        id: `${product.id}-vid-${index}`,
+        creatorHandle: creative.creatorHandle.replace(/^@/, ""),
+        cover: null,
+        description: creative.title,
+        hashtags: ["tiktokmademebuyit", "achadinhos"],
+        durationSec: 28 + index * 6,
+        views: creative.views,
+        likes: creative.likes ?? 0,
+        comments: creative.comments ?? 0,
+        shares: creative.shares ?? 0,
+        favorites: creative.favorites ?? 0,
+        productSales: Math.round(product.sales24h / (index + 3)),
+      }),
+    )
+    return {
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      image: null,
+      priceMin: 49.9,
+      priceMax: 89.9,
+      commissionRate: 0.18,
+      rating: 4.7,
+      reviewCount: 1284,
+      sales7d: Math.round(product.sales24h * 5.5),
+      sales30d: Math.round(product.sales24h * 22),
+      salesTotal: Math.round(product.sales24h * 60),
+      videoCount: 128,
+      creatorCount: 64,
+      firstSeen: "2026-05-20",
+      creators,
+      videos,
+    }
   },
 
   async getTrendingCreatives(options) {

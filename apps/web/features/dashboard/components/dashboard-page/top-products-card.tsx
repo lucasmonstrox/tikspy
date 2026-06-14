@@ -1,83 +1,24 @@
 import { Suspense } from "react"
+import Link from "next/link"
 
-import type { MarketProduct } from "api"
+import { ChevronRightIcon } from "lucide-react"
 
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
 
-import {
-  DataTable,
-  Delta,
-  MediaCell,
-  ScorePill,
-  SkeletonTable,
-  Sparkline,
-} from "@/shared"
-import type { DataColumn, SkeletonColumn } from "@/shared"
+import { SkeletonTable } from "@/shared"
+import type { SkeletonColumn } from "@/shared"
 
 import { TOP_PRODUCTS_LIMIT } from "../../consts"
 import { getTopProducts } from "../../services/dashboard"
-import { formatCompact, formatDeltaPct } from "../../utils/format"
 
-const COLUMNS: DataColumn<MarketProduct>[] = [
-  {
-    header: "#",
-    className: "w-10",
-    render: (_row, index) => (
-      <span className="font-mono text-sm text-muted-foreground/70">{index + 1}</span>
-    ),
-  },
-  {
-    header: "Produto",
-    render: (row, index) => (
-      <MediaCell
-        title={row.name}
-        subtitle={row.category}
-        image={row.image}
-        seed={index}
-      />
-    ),
-  },
-  {
-    header: "Vendas 24h",
-    align: "right",
-    render: (row) => (
-      <span className="font-mono text-sm font-medium">
-        {formatCompact(row.sales24h)}
-      </span>
-    ),
-  },
-  {
-    header: "Tendência",
-    align: "right",
-    render: (row) => (
-      <Sparkline data={row.salesTrend} up={(row.salesDelta24h ?? 0) >= 0} />
-    ),
-  },
-  {
-    header: "Variação 24h",
-    align: "right",
-    render: (row) =>
-      row.salesDelta24h === null ? (
-        <span className="text-sm text-muted-foreground/50">—</span>
-      ) : (
-        <Delta
-          value={formatDeltaPct(row.salesDelta24h)}
-          up={row.salesDelta24h >= 0}
-        />
-      ),
-  },
-  {
-    header: "Score",
-    align: "right",
-    render: (row) => <ScorePill value={row.score} />,
-  },
-]
+import { TopProductsTable } from "./top-products-table"
 
 const SKELETON_COLUMNS: SkeletonColumn[] = [
   { header: "#", cell: "rank", className: "w-10" },
@@ -96,6 +37,15 @@ export function TopProductsCard() {
         <CardDescription>
           Maiores volumes de venda nas últimas 24h
         </CardDescription>
+        <CardAction>
+          <Link
+            href="/produtos"
+            className="flex items-center gap-0.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Ver todos
+            <ChevronRightIcon className="size-4" />
+          </Link>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <Suspense
@@ -107,14 +57,14 @@ export function TopProductsCard() {
             />
           }
         >
-          <TopProductsTable />
+          <TopProductsData />
         </Suspense>
       </CardContent>
     </Card>
   )
 }
 
-async function TopProductsTable() {
+async function TopProductsData() {
   const products = await getTopProducts(TOP_PRODUCTS_LIMIT)
-  return <DataTable bare columns={COLUMNS} rows={products} />
+  return <TopProductsTable products={products} />
 }

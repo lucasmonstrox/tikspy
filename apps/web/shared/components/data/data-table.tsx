@@ -21,6 +21,8 @@ type DataTableProps<T> = {
   /** Sem moldura própria — para uso dentro de um Card. */
   bare?: boolean
   className?: string
+  /** Quando definido, a linha vira clicável (cursor + hover) e dispara isto. */
+  onRowClick?: (row: T, index: number) => void
 }
 
 export function DataTable<T>({
@@ -28,6 +30,7 @@ export function DataTable<T>({
   rows,
   bare = false,
   className,
+  onRowClick,
 }: DataTableProps<T>) {
   return (
     <div
@@ -51,7 +54,17 @@ export function DataTable<T>({
         </TableHeader>
         <TableBody>
           {rows.map((row, rowIndex) => (
-            <TableRow key={rowIndex} className="h-12">
+            <TableRow
+              key={rowIndex}
+              className={cn(
+                "h-12",
+                onRowClick &&
+                  "cursor-pointer transition-colors hover:bg-accent/30",
+              )}
+              onClick={
+                onRowClick ? () => onRowClick(row, rowIndex) : undefined
+              }
+            >
               {columns.map((column) => (
                 <TableCell
                   key={column.header}

@@ -29,6 +29,16 @@ export const getTopProducts = cache(async (limit: number) => {
   return data
 })
 
+export const getProductDetail = cache(async (id: string) => {
+  const { data, error } = await api.v1.market.products({ id }).get()
+  if (error) {
+    // 404 = produto sem ficha no EchoTik; devolve null (sheet sinaliza indisponível).
+    if (error.status === 404) return null
+    apiUnavailable(error.status)
+  }
+  return data
+})
+
 export const getTrendingCreatives = cache(async (limit: number) => {
   const { data, error } = await api.v1.market.creatives.trending.get({
     query: { limit },

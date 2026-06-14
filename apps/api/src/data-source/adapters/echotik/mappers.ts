@@ -4,11 +4,19 @@ import type {
   MarketCreator,
   MarketLive,
   MarketProduct,
+  MarketProductCreator,
+  MarketProductDetail,
+  MarketProductListItem,
+  MarketProductVideo,
 } from "../../types"
 import type {
   InfluencerListItem,
   LiveSearchItem,
+  ProductDetailFull,
   ProductDetailItem,
+  ProductInfluencerItem,
+  ProductListItem,
+  ProductVideoItem,
   RankItem,
   VideoItem,
 } from "./schemas"
@@ -83,6 +91,199 @@ export function toMarketProducts(
       score: scores.get(signal) ?? 50,
     }
   })
+}
+
+/** sales_trend_flag (0=estável, 1=subindo, 2=caindo) → tendência textual. */
+function trendFlagLabel(flag: number): "up" | "stable" | "down" {
+  if (flag === 1) return "up"
+  if (flag === 2) return "down"
+  return "stable"
+}
+
+/**
+ * product_commission_rate → fração 0–1. A unidade não é documentada pela
+ * EchoTik: tratamos valor >1 como percentual (ex.: 18 → 0,18) e clampamos.
+ * Ausente/0 vira null (comissão desconhecida, não "zero").
+ */
+function normalizeCommission(raw?: number | null): number | null {
+  if (raw == null || raw <= 0) return null
+  const fraction = raw > 1 ? raw / 100 : raw
+  return Math.min(Math.max(fraction, 0), 1)
+}
+
+/**
+ * product/list → MarketProductListItem[] (lista de descoberta do /produtos). O
+ * product/list é auto-suficiente (preço/comissão/janelas/tendência), então NÃO
+ * há enrich por detalhe: só assinamos as capas (echosell → 403) e derivamos
+ * score (computeScores), ritmo diário e variação como no top do dashboard.
+ */
+export function toMarketProductListItems(
+  items: ProductListItem[],
+  // capa original (echosell) → URL assinada acessível (batch/cover/download).
+  signedCoverByOriginal: Map<string, string>,
+  // category_id L1 → nome localizado; sem o mapa, a categoria fica "—".
+  categoryNameById?: Map<string, string>,
+): MarketProductListItem[] {
+  // Cohort do score: 30d (estável) de vendas/GMV + presença de vídeos.
+  const signals = items.map((item) => ({
+    item,
+    sales24h: item.total_sale_30d_cnt,
+    gmv24h: item.total_sale_gmv_30d_amt,
+    videoCount: item.total_video_cnt,
+  }))
+  const scores = computeScores(signals)
+
+  return signals.map((signal) => {
+    const { item } = signal
+    const rawCover = firstCoverUrl(item.cover_url)
+    const priceMin = item.min_price || item.spu_avg_price || 0
+    const priceMax = item.max_price || item.spu_avg_price || 0
+    const dailyAvg7d = item.total_sale_7d_cnt / 7
+    // Variação: vendas de ontem (1d) vs. o ritmo diário da última semana.
+    const delta =
+      dailyAvg7d > 0 ? item.total_sale_1d_cnt / dailyAvg7d - 1 : null
+    return {
+      id: item.product_id,
+      name: item.product_name?.trim() || "Produto",
+      category:
+        (item.category_id && categoryNameById?.get(item.category_id)) || "—",
+      image: rawCover ? (signedCoverByOriginal.get(rawCover) ?? null) : null,
+      priceMin: priceMin > 0 ? priceMin : null,
+      priceMax: priceMax > 0 ? priceMax : null,
+      commissionRate: normalizeCommission(item.product_commission_rate),
+      rating: item.product_rating ? Math.min(item.product_rating, 5) : null,
+      reviewCount: item.review_count || null,
+      sales7d: item.total_sale_7d_cnt,
+      sales30d: item.total_sale_30d_cnt,
+      salesTotal: item.total_sale_cnt,
+      // Mini-série de RITMO diário: média/dia em 30d → 7d → ontem.
+      salesTrend: [
+        Math.round(item.total_sale_30d_cnt / 30),
+        Math.round(item.total_sale_7d_cnt / 7),
+        item.total_sale_1d_cnt,
+      ],
+      salesDelta: delta,
+      trendFlag: trendFlagLabel(item.sales_trend_flag),
+      creatorCount: item.total_ifl_cnt,
+      videoCount: item.total_video_cnt,
+      firstSeen: crawlDateToIso(item.first_crawl_dt),
+      score: scores.get(signal) ?? 50,
+    }
+  })
+}
+
+/** Faixa de preço de venda em BRL a partir do `skus` (JSON-em-string). */
+function priceRangeFromSkus(raw?: string | null): {
+  min: number | null
+  max: number | null
+} {
+  if (!raw) return { min: null, max: null }
+  try {
+    const skus = JSON.parse(raw) as Array<{
+      real_price?: { sale_price_decimal?: string }
+    }>
+    const prices = skus
+      .map((sku) => Number(sku.real_price?.sale_price_decimal))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    if (prices.length === 0) return { min: null, max: null }
+    return { min: Math.min(...prices), max: Math.max(...prices) }
+  } catch {
+    return { min: null, max: null }
+  }
+}
+
+/** `first_crawl_dt` (yyyyMMdd int) → "yyyy-MM-dd"; null quando ausente/inválido. */
+function crawlDateToIso(value?: number | null): string | null {
+  if (!value) return null
+  const digits = String(value)
+  if (digits.length !== 8) return null
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+}
+
+/** "#bolsa #moda" → ["bolsa", "moda"]. */
+function parseHashtags(raw?: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(/\s+/)
+    .map((tag) => tag.replace(/^#/, "").trim())
+    .filter(Boolean)
+}
+
+/** product/influencer/list → criadores que promovem o produto (ordem do servidor). */
+export function toProductCreators(
+  items: ProductInfluencerItem[],
+): MarketProductCreator[] {
+  return items.map((item) => ({
+    id: item.user_id,
+    name: item.nick_name?.trim() || `Criador ${item.user_id.slice(-4)}`,
+    avatar: item.avatar || null,
+    niche: item.category?.trim() || "—",
+    followers: item.total_followers_cnt,
+    videos: item.total_post_video_cnt,
+    views: item.total_views_cnt,
+    productSales: item.per_product_ifl_sale_cnt,
+  }))
+}
+
+/** product/video/list → vídeos do produto, com capa assinada (echosell → 403). */
+export function toProductVideos(
+  items: ProductVideoItem[],
+  signedCoverByOriginal: Map<string, string>,
+  // user_id → @handle (unique_id), resolvido à parte (o video/list só tem user_id).
+  handleByUserId: Map<string, string>,
+): MarketProductVideo[] {
+  return items.map((item) => ({
+    id: item.video_id,
+    creatorHandle:
+      (item.user_id && handleByUserId.get(item.user_id)) || null,
+    cover: item.reflow_cover
+      ? (signedCoverByOriginal.get(item.reflow_cover) ?? null)
+      : null,
+    description: item.video_desc?.trim() || "",
+    hashtags: parseHashtags(item.hash_tag),
+    durationSec: item.duration ?? null,
+    views: item.total_views_cnt,
+    likes: item.total_digg_cnt,
+    comments: item.total_comments_cnt,
+    shares: item.total_shares_cnt,
+    favorites: item.total_favorites_cnt,
+    productSales: item.total_video_sale_cnt,
+  }))
+}
+
+/**
+ * Funde product/detail + criadores + vídeos na ficha do sheet. Preço/comissão/
+ * avaliação vêm REAIS em BRL do detail; GMV fica de fora (a fonte só dá USD).
+ * `rating`/`reviewCount` viram null quando 0 (= sem avaliações); `commissionRate`
+ * mantém 0 (comissão zero é um valor legítimo do payload).
+ */
+export function toProductDetail(
+  detail: ProductDetailFull,
+  image: string | null,
+  categoryName: string,
+  creators: MarketProductCreator[],
+  videos: MarketProductVideo[],
+): MarketProductDetail {
+  const { min, max } = priceRangeFromSkus(detail.skus)
+  return {
+    id: detail.product_id,
+    name: detail.product_name?.trim() || "Produto",
+    category: categoryName,
+    image,
+    priceMin: min,
+    priceMax: max,
+    commissionRate: detail.product_commission_rate ?? null,
+    rating: detail.product_rating || null,
+    reviewCount: detail.review_count || null,
+    sales7d: detail.total_sale_7d_cnt,
+    sales30d: detail.total_sale_30d_cnt,
+    salesTotal: detail.total_sale_cnt,
+    videoCount: detail.total_video_cnt,
+    creatorCount: detail.total_ifl_cnt,
+    firstSeen: crawlDateToIso(detail.first_crawl_dt),
+    creators,
+    videos,
+  }
 }
 
 /**
